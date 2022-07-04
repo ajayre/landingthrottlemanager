@@ -8,13 +8,16 @@
 // speed right and looking out of the window at the runway, rather than
 // fumbling for the throttle levers and the reverse-thrust hotspot
 
-// when arming is requested the plugin will wait for the landing conditions
-// for example less than 160KIAS, flaps at 18+ deg, gears are down
-// when armed it will reduce throttle to idle and then wait for all wheels to be
-// on the ground.
+// when the plugin is enabled (e.g. using a button press) it checks if the
+// landing conditions are met, for example less than 160KIAS, flaps at 18+ deg, gears are down
+// and 500ft or less above ground.
+// if the conditions are met it will reduce throttle to idle and then wait for all
+// wheels to be on the ground.
 // when all wheels are down the reverse thrust is applied until a speed of 60KIAS
 // is reached at which point reverse thrust is disabled and the throttle
 // returned to idle
+// if the conditions are not met to enable the plugin then voice guidance will be given
+// as to which conditions are not being met
 
 #include <stdio.h>
 #include <string.h>
