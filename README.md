@@ -25,4 +25,4 @@ Choose Edit and then search for 'Enable for Landing Throttle Manager'
 
 After crossing the runway threshold get to the desired height and press the configured button. The throttle will be smoothly reduced to idle. Glide the aircraft down onto the runway and lower the nose wheel onto the ground. Reverse thrust will be automatically applied and then removed at 60KIAS.
 
-While the plugin is controlling the throttle the levers cannot be used. If necessary to immediately stop the plugin and release it's control of the throttle go to the X-Plane Plugins menu and choose Landing Throttle Manager -> Stop and Disable
+While the plugin is controlling the throttle the levers cannot be used. It shouldn't be necessary, but if needed to immediately stop the plugin and release it's control of the throttle go to the X-Plane Plugins menu and choose Landing Throttle Manager -> Stop and Disable
