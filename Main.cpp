@@ -25,11 +25,12 @@
 #include "XPLMMenus.h"
 #include "XPLMProcessing.h"
 #include "XPLMUtilities.h"
+#include "XPLMPlugin.h"
 
 // basic plugin information
 #define PLUGIN_NAME "Landing Throttle Manager"
 #define PLUGIN_VERSION_MAJOR 1
-#define PLUGIN_VERSION_MINOR 0
+#define PLUGIN_VERSION_MINOR 1
 #define PLUGIN_VERSION_DOT   0
 #define PLUGIN_COPYRIGHT "(C) andy@britishideas.com 2022"
 
@@ -66,6 +67,21 @@ typedef enum _states
   WAIT_FOR_END_OF_REVERSE
 } states_t;
 
+// identifiers of known aircraft
+typedef enum _aircraft_id_t
+{
+  AIRCRAFT_UNKNOWN,
+  AIRCRAFT_XCRAFTS_ERJ_FAMILY
+} aircraft_id_t;
+
+// describes a know aircraft
+typedef struct _known_aircraft_t
+{
+  aircraft_id_t Id;
+  char *DescriptionMatch;
+  char *UserFriendlyName;
+} known_aircraft_t;
+
 // commands and data references that we need
 static XPLMCommandRef ReverseThrustCmd       = NULL;
 static XPLMCommandRef ThrottleDownCmd        = NULL;
@@ -85,6 +101,15 @@ static states_t CurrentState = WAIT_FOR_USER;
 static bool DeactivationRequested = FALSE;
 // prototype for the function that handles menu choices
 static void	MenuHandlerCallback(void *inMenuRef, void *inItemRef);    
+// flag to indicate if we are ready for use
+static bool Ready = FALSE;
+
+// all the known aircraft
+static _known_aircraft_t KnownAircrafts[] =
+{
+  {AIRCRAFT_XCRAFTS_ERJ_FAMILY, "x-crafts erj", "X-Crafts ERJ Family"},
+};
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 // INTERNAL FUNCTIONS
@@ -118,6 +143,8 @@ static float StateMachine
   void *refcon
   )
 {
+  if (Ready == FALSE) return STATE_MACHINE_EXECUTION_INTERVAL;
+
   switch (CurrentState)
   {
     // the current state needs to be set to START to exit
@@ -264,10 +291,12 @@ static float StateMachine
 
 // enables the manager
 static void Enable
-(
+  (
   void
-)
+  )
 {
+  if (Ready == FALSE) return;
+
   // trigger the state machine
   if (CurrentState == WAIT_FOR_USER)
   {
@@ -318,6 +347,12 @@ static int EnableCmdHandler
   void *inRefcon
   )
 {
+  if (Ready == FALSE)
+  {
+    XPLMSpeakString("Plugin failed to load, check the aircraft is known");
+    return 0;
+  }
+
   //  If inPhase == 0 the command is executed once on button down.
   if (inPhase == 0)
   {
@@ -335,6 +370,12 @@ static void MenuHandlerCallback
   void *inItemRef
   )
 {
+  if (Ready == FALSE)
+  {
+    XPLMSpeakString("Plugin failed to load, check the aircraft is known");
+    return;
+  }
+
   // user chose to arm the manager
   if ((int)inItemRef == MENU_ITEM_ID_ENABLE)
   {
@@ -352,6 +393,46 @@ static void MenuHandlerCallback
     }
   }
 }
+
+// determines the currently loaded aircraft
+static aircraft_id_t DetectAircraft
+  (
+  void
+  )
+{
+  // is a description for the aircraft defined? if not then we can't tell what it is
+  XPLMDataRef AircraftDescriptionRef = XPLMFindDataRef("sim/aircraft/view/acf_descrip");
+  if (AircraftDescriptionRef != NULL)
+  {
+    // get aircraft description and convert to lower case
+    char Description[256];
+    XPLMGetDatab(AircraftDescriptionRef, (void *)Description, 0, 256);
+    for (int c = 0; c < strlen(Description); c++) Description[c] = tolower(Description[c]);
+
+#if DIAGNOSTIC == 1
+    Diagnostic_printf("Aircraft loaded = '%s'\n", Description);
+#endif // DIAGNOSTIC
+
+    int NumKnownAircraft = sizeof(KnownAircrafts) / sizeof(known_aircraft_t);
+#if DIAGNOSTIC == 1
+    Diagnostic_printf("We know about %d different aircraft, searching for match\n", NumKnownAircraft);
+#endif // DIAGNOSTIC
+
+    for (int a = 0; a < NumKnownAircraft; a++)
+    {
+      if (strstr(Description, KnownAircrafts[a].DescriptionMatch) != NULL)
+      {
+#if DIAGNOSTIC == 1
+        Diagnostic_printf("Found match for aircraft: %s\n", KnownAircrafts[a].UserFriendlyName);
+#endif // DIAGNOSTIC
+        return KnownAircrafts[a].Id;
+      }
+    }
+  }
+
+  return AIRCRAFT_UNKNOWN;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 // PLUGIN API
@@ -375,6 +456,9 @@ PLUGIN_API int XPluginStart
   strcpy_s(outName, 256, PLUGIN_NAME);
   strcpy_s(outSig, 256, "britishideas.assistants.landingthrottlemanager");
   strcpy_s(outDesc, 256, "Handles the throttle and reverse thrust on landing for VR users");
+
+  // not ready until we know what aircraft will be used
+  Ready = FALSE;
 
 	// First we put a new menu item into the plugin menu.
 	// This menu item will contain a submenu for us
@@ -403,60 +487,6 @@ PLUGIN_API int XPluginStart
     "Stop and disable",
     (void *)MENU_ITEM_ID_STOP,
     1);
-
-  // get commands
-  ReverseThrustCmd = XPLMFindCommand("sim/engines/thrust_reverse_hold");
-  if (ReverseThrustCmd == NULL)
-  {
-    sprintf_s(outDesc, 256, "Failed to find reverse thrust command");
-    return FALSE;
-  }
-  ThrottleDownCmd = XPLMFindCommand("sim/engines/throttle_down");
-  if (ThrottleDownCmd == NULL)
-  {
-    sprintf_s(outDesc, 256, "Failed to find throttle down command");
-    return FALSE;
-  }
-
-  // get datarefs
-  ThrottleRatioRef = XPLMFindDataRef("sim/cockpit2/engine/actuators/throttle_ratio_all");
-  if (ThrottleRatioRef == NULL)
-  {
-    sprintf_s(outDesc, 256, "Failed to find reverse throttle ratio data");
-    return FALSE;
-  }
-  IndicatedAirSpeedRef = XPLMFindDataRef("sim/flightmodel/position/indicated_airspeed2");
-  if (IndicatedAirSpeedRef == NULL)
-  {
-    sprintf_s(outDesc, 256, "Failed to find indicated air speed data");
-    return FALSE;
-  }
-  AllWheelsOnGroundRef = XPLMFindDataRef("sim/flightmodel/failures/onground_all");
-  if (AllWheelsOnGroundRef == NULL)
-  {
-    sprintf_s(outDesc, 256, "Failed to find all wheels on ground data");
-    return FALSE;
-  }
-  FlapsAngleRef = XPLMFindDataRef("sim/flightmodel2/wing/flap1_deg");
-  if (FlapsAngleRef == NULL)
-  {
-    sprintf_s(outDesc, 256, "Failed to find flaps angle data");
-    return FALSE;
-  }
-
-  GearDeployRatioRef = XPLMFindDataRef("sim/flightmodel2/gear/deploy_ratio");
-  if (GearDeployRatioRef == NULL)
-  {
-    sprintf_s(outDesc, 256, "Failed to find gear deploy data");
-    return FALSE;
-  }
-
-  AltitudeAboveGroundRef = XPLMFindDataRef("sim/flightmodel2/position/y_agl");
-  if (AltitudeAboveGroundRef == NULL)
-  {
-    sprintf_s(outDesc, 256, "Failed to find altitude above ground data");
-    return FALSE;
-  }
 
   // create custom command
   char CmdName[100];
@@ -501,6 +531,7 @@ PLUGIN_API int XPluginEnable
   return 1;
 }
 
+// called when a message is received from X-plane
 PLUGIN_API void XPluginReceiveMessage
   (
   XPLMPluginID inFromWho,
@@ -508,4 +539,71 @@ PLUGIN_API void XPluginReceiveMessage
   void *inParam
   )
 {
+  // a new aircraft has been loaded, check if we know it and if so access the data refs and commands we need
+  if (inMessage == XPLM_MSG_PLANE_LOADED)
+  {
+    Ready = FALSE;
+
+    aircraft_id_t AircraftId = DetectAircraft();
+
+    switch (AircraftId)
+    {
+      case AIRCRAFT_XCRAFTS_ERJ_FAMILY:
+        {
+          // get commands
+          ReverseThrustCmd = XPLMFindCommand("sim/engines/thrust_reverse_hold");
+          if (ReverseThrustCmd == NULL)
+          {
+            return;
+          }
+          ThrottleDownCmd = XPLMFindCommand("sim/engines/throttle_down");
+          if (ThrottleDownCmd == NULL)
+          {
+            return;
+          }
+
+          // get datarefs
+          ThrottleRatioRef = XPLMFindDataRef("sim/cockpit2/engine/actuators/throttle_ratio_all");
+          if (ThrottleRatioRef == NULL)
+          {
+            return;
+          }
+          IndicatedAirSpeedRef = XPLMFindDataRef("sim/flightmodel/position/indicated_airspeed2");
+          if (IndicatedAirSpeedRef == NULL)
+          {
+            return;
+          }
+          AllWheelsOnGroundRef = XPLMFindDataRef("sim/flightmodel/failures/onground_all");
+          if (AllWheelsOnGroundRef == NULL)
+          {
+            return;
+          }
+          FlapsAngleRef = XPLMFindDataRef("sim/flightmodel2/wing/flap1_deg");
+          if (FlapsAngleRef == NULL)
+          {
+            return;
+          }
+
+          GearDeployRatioRef = XPLMFindDataRef("sim/flightmodel2/gear/deploy_ratio");
+          if (GearDeployRatioRef == NULL)
+          {
+            return;
+          }
+
+          AltitudeAboveGroundRef = XPLMFindDataRef("sim/flightmodel2/position/y_agl");
+          if (AltitudeAboveGroundRef == NULL)
+          {
+            return;
+          }
+        }
+#if DIAGNOSTIC == 1
+        Diagnostic_printf("Ready to go\n");
+#endif // DIAGNOSTIC
+        Ready = TRUE;
+        break;
+
+      case AIRCRAFT_UNKNOWN:
+        break;
+    }
+  }
 }
