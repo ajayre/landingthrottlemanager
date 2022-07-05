@@ -56,7 +56,7 @@
 #define MENU_ITEM_ID_STOP   2
 
 // state machine states
-typedef enum _states
+typedef enum _states_t
 {
   WAIT_FOR_USER,
   START,
@@ -347,15 +347,15 @@ static int EnableCmdHandler
   void *inRefcon
   )
 {
-  if (Ready == FALSE)
-  {
-    XPLMSpeakString("Plugin failed to load, check the aircraft is known");
-    return 0;
-  }
-
-  //  If inPhase == 0 the command is executed once on button down.
+  // If inPhase == 0 the command is executed once on button down.
   if (inPhase == 0)
   {
+    if (Ready == FALSE)
+    {
+      XPLMSpeakString("Plugin failed to load, check the aircraft is known");
+      return 0;
+    }
+
     Enable();
   }
 
