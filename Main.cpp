@@ -1,7 +1,7 @@
 // Landing Throttle Manager
-// Version 1.0.0
+// Version 1.1.0
 // (C) andy@britishideas.com 2022, free for personal use, no commercial use
-// For X-Plane 11.55 and X-Crafts ERJ Family
+// For X-Plane 11.55
 
 // This plugin will manage the throttle and reverse thrust during landing
 // which helps when using VR as the pilot can concentrate on getting the threshold
